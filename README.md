@@ -175,6 +175,74 @@ on the `master` branch. Concrete differences from goatcorp upstream:
 
 ---
 
+## Submitting a plugin
+
+Plugin submission is a normal GitHub PR flow against the manifest repo,
+[`puppyprogrammer/DalamudPluginsD17`](https://github.com/puppyprogrammer/DalamudPluginsD17).
+There is no upstream-style category gate — AI plugins, experimental
+tooling, and the rest are all welcome. There is, however, a security
+review (AI-assisted, human-decided) on every PR.
+
+### How to submit
+
+1. **Fork** [`puppyprogrammer/DalamudPluginsD17`](https://github.com/puppyprogrammer/DalamudPluginsD17).
+2. **Add a manifest** at `stable/<YourPluginName>/manifest.toml` (see
+   the upstream [DIP17 docs](https://github.com/goatcorp/DalamudPluginsD17?tab=readme-ov-file#how-to-add-or-update-a-plugin)
+   for the schema — we did not change it). The manifest pins your
+   plugin's Git URL and a specific commit SHA, so your published build
+   is reproducible and immutable.
+3. **Optionally** add `stable/<YourPluginName>/images/` with screenshots
+   for the in-game plugin browser.
+4. **Open a PR** against `main`.
+
+### What happens after you open the PR
+
+- **AI preliminary review** — `ai-review.yml` runs automatically. It
+  asks Claude (Haiku) to look at the diff, the manifest fields, and
+  the linked plugin repo, then post a sticky comment under the PR
+  with: a one-paragraph summary, a risk level (LOW/MEDIUM/HIGH), a
+  bullet list of concrete findings, and a recommendation
+  (APPROVE / APPROVE WITH NOTES / REQUEST CHANGES / BLOCK). This is
+  **advisory only**.
+- **Human final approval.** A FFXIVPlugins maintainer reads the AI
+  review, sanity-checks anything it flagged, and either merges the PR
+  or asks for changes. We do not auto-merge — final approval is
+  always a human decision.
+- **Build & ship.** When the PR is merged to `main`, `push.yml`
+  triggers Plogon. Plogon clones your plugin at the pinned commit,
+  builds it inside a sandboxed Docker image, and the resulting zip is
+  committed to [`puppyprogrammer/PluginDistD17`](https://github.com/puppyprogrammer/PluginDistD17).
+  A signal request to `https://ffxivplugins.commslink.net/Plogon/CommitStagedPlugins`
+  refreshes the in-memory `PluginMaster`, and within about a minute
+  every running launcher and in-game Dalamud sees your plugin in the
+  browser.
+
+### Why we review at all
+
+AI gating is the upstream's policy problem; *security* is everyone's
+problem. A Dalamud plugin runs as native code inside the user's game
+process, with full memory access. We refuse goatcorp's
+*category* gatekeeping but we still keep a *safety* review — an
+unreviewed pipeline is irresponsible no matter what your policy on AI
+is.
+
+The review focuses on concrete signals: Is the manifest pinning a
+specific commit? Does the linked repo exist and look like a Dalamud
+plugin? Is the author known to us? Are there obvious red flags in the
+diff (suspicious URLs, unowned manifests, encoded payloads)? It does
+**not** waste your time on style nitpicks or general "best practices"
+lectures.
+
+### Authors who have submitted before
+
+Once a maintainer has merged at least one PR from a given GitHub
+author, future PRs from the same author will get the same AI review
+but a faster human turnaround. We're not trying to make you jump
+through hoops — we're trying to catch the one griefer in a thousand
+without rejecting the other 999.
+
+---
+
 ## Sustainability: how this stays current
 
 Each fork runs three GitHub Actions workflows on a schedule:
