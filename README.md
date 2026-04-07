@@ -1,10 +1,18 @@
 # FFXIVPlugins
 
-**An AI-friendly fork of the Dalamud / XIVLauncher ecosystem.**
+**Plugins for FFXIV. One click. No catch.**
+
+FFXIVPlugins is a community-run alternative distribution of plugins for
+Final Fantasy XIV. We mirror the open-source Dalamud framework and host
+plugins that the official repository can't or won't approve — including
+AI-assisted tools, experimental utilities, and quality-of-life mods built
+by independent developers.
+
+> **Operated by [CommsLink](https://commslink.net).** Independent project,
+> not affiliated with goatcorp, XIVLauncher, or Dalamud.
 
 This is the meta / hub repository for `puppyprogrammer/FFXIVPlugins` — a
-ground-up fork of the entire goatcorp Dalamud plugin ecosystem, built to
-support AI-powered plugins that the upstream project will not approve.
+ground-up fork of the entire goatcorp Dalamud plugin ecosystem.
 
 We mirror every layer of the upstream stack so that the project cannot be
 shut off by upstream changes to URLs, signing, or approval policy.
