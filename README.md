@@ -57,19 +57,30 @@ All fixes are build-verified (`dotnet build` — 0 errors) and backwards-compati
 
 ## Why this exists
 
-The official goatcorp ecosystem is *open source* but **not AI-friendly** —
-they reject AI plugins on policy grounds. The technical infrastructure is
-fine; the gatekeeping is purely social, applied at the plugin-approval and
-distribution layers.
+The official goatcorp ecosystem is *open source* but has two systemic problems:
 
-Dalamud already supports user-added "third-party plugin repositories", but
-that path leaves the entire **runtime** (Dalamud itself, the launcher, the
-auth/version API) under goatcorp's control. If goatcorp ever adds a signing
-check, an allowlist, or a kill switch to the official Dalamud build, every
+**1. Gatekeeping.** They reject AI-assisted plugins on policy grounds. The
+code is open; the distribution layer is not. If upstream doesn't approve
+your plugin, it doesn't ship — regardless of quality or user demand.
+
+**2. Neglected security.** Our [audit](#security-improvements-over-upstream)
+found plugin downloads with no integrity verification, an API server
+accepting plaintext HTTP with HTTPS enforcement commented out, temp files
+vulnerable to local symlink-race attacks, and zero access control on
+inter-plugin IPC. These aren't edge cases — they're in the core download
+and execution paths that every user hits. (See the table above for details
+and our fixes.)
+
+Dalamud supports user-added "third-party plugin repositories", but that
+path leaves the entire **runtime** (Dalamud itself, the launcher, the
+auth/version API) under goatcorp's control — including the unfixed
+security issues above. If goatcorp ever adds a signing check, an
+allowlist, or a kill switch to the official Dalamud build, every
 third-party repo dies overnight.
 
 A full ecosystem fork is the only configuration that is structurally
-immune to upstream lockout. So that's what we built.
+immune to upstream lockout **and** lets us ship security fixes the
+upstream project won't prioritize. So that's what we built.
 
 ---
 
