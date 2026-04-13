@@ -1,235 +1,116 @@
-# Phase 0 — Goatcorp Stack Inventory
+# FFXIVPlugins — Stack Architecture & Status
 
-Inventory of every goatcorp-controlled component the FFXIV / Dalamud / XIVLauncher
-ecosystem depends on, with concrete file:line citations of every URL the
-launcher and Dalamud reach out to. This is the map we use to plan replacements.
-
-All paths below are local clones under `H:/Development/`.
+This document inventories the goatcorp stack, maps every lockout
+chokepoint, and tracks what we've built, forked, and hardened.
 
 ---
 
-## 1. Repos cloned (Phase 0)
+## 1. Repos (all forked under `puppyprogrammer/`)
 
-| Local path | Upstream | Role | Size note |
-|---|---|---|---|
-| `FFXIVQuickLauncher/` | `goatcorp/FFXIVQuickLauncher` | **Windows launcher** (WPF/.NET). Patches game, OTP, injects Dalamud. | shallow |
-| `XIVLauncher.Core/` | `goatcorp/XIVLauncher.Core` | **Cross-platform launcher** (Steam Deck / Linux). Same purpose, different UI. | shallow |
-| `Dalamud/` | `goatcorp/Dalamud` | **In-game framework** injected into ffxiv_dx11.exe. Loads plugins, ImGui, hooks. AGPLv3. | shallow |
-| `FFXIVClientStructs/` | `aers/FFXIVClientStructs` | Memory layout / sig defs every plugin uses. **Breaks every game patch.** | shallow |
-| `dalamud-distrib/` | `goatcorp/dalamud-distrib` | Static CDN of built Dalamud zips (`stg/latest.zip`, etc.). GitHub Pages. | shallow |
-| `DalamudAssets/` | `goatcorp/DalamudAssets` | Static fonts/icons Dalamud loads at startup. (clone in progress, LFS) | shallow |
-| `DalamudPackager/` | `goatcorp/DalamudPackager` | MSBuild task plugins use to package themselves. Trivial. | shallow |
-| `Dalamud.NET.Sdk/` | `goatcorp/Dalamud.NET.Sdk` | MSBuild SDK most modern plugins target. | shallow |
-| `Plogon/` | `goatcorp/Plogon` | Docker-based CI builder consumed by DalamudPluginsD17. | shallow |
-| `XLWebServices/` | `goatcorp/XLWebServices` | **The backend API** (`kamori.goats.dev`). ASP.NET. **This is the lockout chokepoint.** | shallow |
-| `DalamudPluginsD17-AIFriendly/` | `puppyprogrammer/DalamudPluginsD17` (fork of `goatcorp/DalamudPluginsD17`) | Plugin manifest index. Already cloned. | full |
-
-### Repos identified but not yet cloned (low priority for Phase 0)
-
-- `goatcorp/PluginDistD17` — built plugin zips. Huge. We only need its layout.
-- `goatcorp/patchinfo` — game patch metadata used by the patcher.
-- `goatcorp/bleatbot` — GitHub bot that handles `bleatbot, rebuild` PR commands.
-- `goatcorp/operator` — internal ops tooling.
-- `goatcorp/plogon-builder` — build helper image for Plogon.
-- `goatcorp/XIVLauncher.PatchInstaller` (if separate) — patch unpacker.
-- `goatcorp/dalamud-bugbait` — feedback collection backend (`kiko.goats.dev`).
-- `goatcorp/goatcorp.github.io` — the static website (FAQ, faq/integrity/, etc.).
+| Layer | Fork | Upstream | Status | Custom branch |
+|---|---|---|---|---|
+| **Windows launcher** | [`FFXIVQuickLauncher`](https://github.com/puppyprogrammer/FFXIVQuickLauncher) | `goatcorp/FFXIVQuickLauncher` | Rebranded, URL-repointed, themed, security-hardened | `ai-friendly`, `security/temp-file-hardening` |
+| **In-game framework** | [`Dalamud`](https://github.com/puppyprogrammer/Dalamud) | `goatcorp/Dalamud` | URL-repointed, SHA-256 plugin verification, temp file hardening, IPC access control | `ai-friendly` |
+| **Backend API** | [`XLWebServices`](https://github.com/puppyprogrammer/XLWebServices) | `goatcorp/XLWebServices` | HTTPS enforced, security headers added | `security/https-enforcement` |
+| **Plugin index** | [`DalamudPluginsD17`](https://github.com/puppyprogrammer/DalamudPluginsD17) | `goatcorp/DalamudPluginsD17` | AI-friendly plugin manifests | `add-ffxivoices` |
+| **Built plugin CDN** | [`PluginDistD17`](https://github.com/puppyprogrammer/PluginDistD17) | `goatcorp/PluginDistD17` | In sync with upstream | — |
+| **Game struct defs** | [`FFXIVClientStructs`](https://github.com/puppyprogrammer/FFXIVClientStructs) | `aers/FFXIVClientStructs` | Workflows added | `ai-friendly` |
+| **Dalamud release CDN** | [`dalamud-distrib`](https://github.com/puppyprogrammer/dalamud-distrib) | `goatcorp/dalamud-distrib` | In sync with upstream | — |
+| **Static assets** | [`DalamudAssets`](https://github.com/puppyprogrammer/DalamudAssets) | `goatcorp/DalamudAssets` | In sync with upstream | — |
+| **Linux launcher** | [`XIVLauncher.Core`](https://github.com/puppyprogrammer/XIVLauncher.Core) | `goatcorp/XIVLauncher.Core` | In sync with upstream (not yet rebranded) | — |
 
 ---
 
-## 2. The lockout chokepoints — every URL the client reaches out to
+## 2. Lockout chokepoints
 
-This is the critical section. Each URL below is a place goatcorp could
-unilaterally cut us off from. **All of them must be repointed at our infra
-before we can claim independence.**
+Every URL the launcher and Dalamud reach out to. All critical ones have
+been repointed at our infrastructure (`ffxivplugins.commslink.net`).
 
-### 2A. `kamori.goats.dev` — XLWebServices (the API server)
+### 2A. `kamori.goats.dev` → `ffxivplugins.commslink.net` ✅
 
-This is the single most important host. It's a small ASP.NET app
-(`XLWebServices/`) that wraps the static GitHub repos with a JSON API.
-
-| Endpoint | Caller | File | What it returns |
-|---|---|---|---|
-| `/Plugin/PluginMaster` | **Dalamud** plugin installer | `Dalamud/Dalamud/Plugin/Internal/Types/PluginRepository.cs:28` | **The full plugin list (JSON).** Generated from `PluginDistD17` + manifests. **THIS is the central choke point.** |
-| `/Plugin/History/{name}?track={track}` | Dalamud changelog UI | `Dalamud/Dalamud/Interface/Internal/Windows/PluginInstaller/DalamudChangelogManager.cs:20` | Per-plugin version history |
-| `/Dalamud/Release/Meta` | Launcher + Dalamud | `FFXIVQuickLauncher/src/XIVLauncher.Common/Dalamud/DalamudBranchMeta.cs:49`, `Dalamud/Dalamud/Interface/Internal/Windows/BranchSwitcherWindow.cs:26` | List of Dalamud branches (release, stg, canary, etc.) |
-| `/Dalamud/Release/VersionInfo?track={track}` | Launcher + Dalamud self-update | `FFXIVQuickLauncher/src/XIVLauncher.Common/Dalamud/DalamudLauncher.cs:48`, `Dalamud/Dalamud/Support/DalamudReleases.cs:18` | Currently advertised Dalamud version per branch |
-| `/Dalamud/Release/Changelog` | Dalamud UI | `Dalamud/Dalamud/Interface/Internal/Windows/PluginInstaller/DalamudChangelogManager.cs:19` | Dalamud release notes |
-| `/Dalamud/Asset/Meta` | Launcher | `FFXIVQuickLauncher/src/XIVLauncher.Common/Dalamud/AssetManager.cs:19` | Manifest of Dalamud asset files (fonts, icons) |
-| `/Dalamud/Release/Runtime/Hashes/{version}` | Launcher | `FFXIVQuickLauncher/src/XIVLauncher.Common/Dalamud/DalamudUpdater.cs:501` | .NET runtime expected hashes |
-| `/Dalamud/Release/Runtime/DotNet/{version}` | Launcher | `DalamudUpdater.cs:535` | .NET runtime download |
-| `/Dalamud/Release/Runtime/WindowsDesktop/{version}` | Launcher | `DalamudUpdater.cs:536` | WindowsDesktop runtime download |
-| `/Launcher/GetLease` | Launcher self-update | `FFXIVQuickLauncher/src/XIVLauncher/Updates.cs:35` | Gates whether the launcher is allowed to run / update |
-| `/Launcher/GetFile` | Launcher self-update | `FFXIVQuickLauncher/src/XIVLauncher/Updates.cs:36` | Launcher binary download |
-| `/Launcher/GetLauncherClientConfig` | Launcher (Win + Core) | `FFXIVQuickLauncher/src/XIVLauncher.Common/Util/DebugHelpers.cs:79`, `XIVLauncher.Core/src/XIVLauncher.Core/Net/LauncherClientConfig.cs:14` | Feature flags / kill switches |
-| `/Proxy/Meta` | Launcher news | `FFXIVQuickLauncher/src/XIVLauncher/Windows/ChangelogWindow.xaml.cs:22` | News feed shown in launcher window |
-
-**Source of truth:** `XLWebServices/XLWebServices/Controllers/PluginController.cs:94`
-implements `PluginMaster` — it reads the manifests from the configured
-`GitHub:PluginDistD17:Owner/Name` repo (`ConfigMasterService.cs:34-35`) and
-builds the response. This is small (a few hundred lines) and very forkable.
-
-The `Proxy=true` query flag rewrites plugin download URLs through Kamori
-itself. With `proxy=false`, Dalamud will pull plugin zips directly from:
-
-```
-https://raw.githubusercontent.com/goatcorp/PluginDistD17/{branch}/{channel}/{plugin}/latest.zip
-```
-(`XLWebServices/XLWebServices/Controllers/PluginController.cs:72`)
-
-### 2B. `goatcorp.github.io` — static GitHub Pages (low risk, easy to mirror)
-
-| URL | Caller | File |
+| Endpoint | Caller | Status |
 |---|---|---|
-| `goatcorp.github.io/dalamud-distrib/stg/latest.zip` | Dalamud build CI; staging Dalamud download | `Dalamud/.github/workflows/main.yml:84` |
-| `goatcorp.github.io/integrity/` | Launcher game-file integrity check | `FFXIVQuickLauncher/src/XIVLauncher.Common/Game/IntegrityCheck.cs:16` |
-| `goatcorp.github.io/faq/...` | Browser-opened help links (many) | various |
+| `/Plugin/PluginMaster` | Dalamud plugin installer | **Repointed** |
+| `/Plugin/History/{name}` | Dalamud changelog UI | **Repointed** |
+| `/Dalamud/Release/Meta` | Launcher + Dalamud | **Repointed** |
+| `/Dalamud/Release/VersionInfo` | Launcher + Dalamud self-update | **Repointed** |
+| `/Dalamud/Release/Changelog` | Dalamud UI | **Repointed** |
+| `/Dalamud/Asset/Meta` | Launcher | **Repointed** |
+| `/Dalamud/Release/Runtime/Hashes/{v}` | Launcher | **Repointed** |
+| `/Dalamud/Release/Runtime/DotNet/{v}` | Launcher | **Repointed** |
+| `/Dalamud/Release/Runtime/WindowsDesktop/{v}` | Launcher | **Repointed** |
+| `/Launcher/GetLease` | Launcher self-update | **Bypassed** (no kill switch) |
+| `/Launcher/GetFile` | Launcher self-update | **Bypassed** |
+| `/Launcher/GetLauncherClientConfig` | Launcher feature flags | **Repointed** |
+| `/Proxy/Meta` | Launcher news | **Repointed** |
 
-These are pure static GitHub Pages. We can mirror by enabling Pages on our
-forks of `dalamud-distrib`, `integrity`, and `goatcorp.github.io`.
+### 2B. `goatcorp.github.io` — static GitHub Pages
 
-### 2C. `kiko.goats.dev` — bug feedback (ignore-able)
+| URL | Status |
+|---|---|
+| `goatcorp.github.io/dalamud-distrib/` | Mirrorable via our fork's Pages |
+| `goatcorp.github.io/integrity/` | Mirrorable |
+| `goatcorp.github.io/faq/` | Not critical |
 
-| URL | Caller | File |
-|---|---|---|
-| `kiko.goats.dev/feedback` | Dalamud "send feedback" button | `Dalamud/Dalamud/Support/BugBait.cs:18` |
+### 2C. `kiko.goats.dev` — bug feedback
 
-Telemetry/feedback only. Safe to point at `/dev/null` or commslink.net.
+Telemetry/feedback only. Safe to ignore or redirect to commslink.net.
 
-### 2D. SE-owned (we never touch)
+### 2D. SE-owned (never touch)
 
-The launcher also talks to `ffxiv-login.square-enix.com`, `patch-dl.ffxiv.com`,
-`ffxiv.com`, etc. These are Square Enix's, not goatcorp's, and are not
-lockout vectors for us — they're the same servers the official launcher uses.
-
----
-
-## 3. The dependency graph
-
-```
-                        ┌─────────────────────────┐
-                        │   FFXIV (the game)      │
-                        └───────────▲─────────────┘
-                                    │ inject DLL
-                                    │
-        ┌───────────────────────────┴──────────────────────┐
-        │  Dalamud  (in-process, AGPLv3)                   │
-        │  ─ loads plugins from PluginMaster JSON          │
-        │  ─ self-updates from kamori.goats.dev            │
-        └───────────────────────────▲──────────────────────┘
-                                    │ launches & updates
-                                    │
-        ┌───────────────────────────┴──────────────────────┐
-        │  XIVLauncher (Win)  /  XIVLauncher.Core (Linux)  │
-        │  ─ patches game  ─ SE login  ─ OTP               │
-        │  ─ pulls Dalamud zips from kamori                │
-        │  ─ self-updates from kamori                      │
-        └───────────────────────────▲──────────────────────┘
-                                    │ HTTPS
-                                    │
-            ┌───────────────────────┴────────────────────────┐
-            │   kamori.goats.dev   (= XLWebServices)         │
-            │   ──────────────────────────────────────────   │
-            │   /Plugin/PluginMaster   ← THE chokepoint      │
-            │   /Dalamud/Release/...                         │
-            │   /Launcher/...                                │
-            │                                                │
-            │   reads from GitHub:                           │
-            │     ─ DalamudPluginsD17  (manifest index)      │
-            │     ─ PluginDistD17      (built plugin zips)   │
-            │     ─ dalamud-distrib    (Dalamud zips)        │
-            │     ─ DalamudAssets      (fonts/icons)         │
-            └────────────────────────────────────────────────┘
-```
-
-**Key insight:** the in-game plugin installer **never talks to GitHub
-directly.** It talks to Kamori, which proxies/aggregates the GitHub repos.
-That means:
-
-1. Forking `DalamudPluginsD17` alone changes nothing for end users.
-2. The minimum viable lockout-proof stack requires either
-   (a) replacing Kamori with our own `pluginmaster.json` host AND patching
-       Dalamud's `MainRepoUrl` constant to point at it, OR
-   (b) running our own Kamori instance (XLWebServices is open source) on
-       commslink.net and patching Dalamud's `MainRepoUrl` to point at it.
-
-Option (b) is strictly better: it gives us version-info, changelogs, and
-all the per-plugin endpoints "for free" because Dalamud's existing UI just
-works against an unmodified XLWebServices clone.
+`ffxiv-login.square-enix.com`, `patch-gamever.ffxiv.com`, `frontier.ffxiv.com` — these are Square Enix game servers. We pass through exactly like upstream does.
 
 ---
 
-## 4. Risk register
+## 3. Security improvements
+
+Vulnerabilities found in upstream code, fixed in our fork:
+
+| # | Vulnerability | Component | Our fix | PR |
+|---|---|---|---|---|
+| 1 | No plugin download integrity verification | Dalamud | SHA-256 hash field + verification before extraction | [Dalamud #1](https://github.com/puppyprogrammer/Dalamud/pull/1) |
+| 2 | API server accepts plaintext HTTP, no security headers | XLWebServices | HTTPS enforced, HSTS + full header suite | [XLWebServices #1](https://github.com/puppyprogrammer/XLWebServices/pull/1) |
+| 3 | Temp file symlink-race (local privilege escalation) | Dalamud + Launcher | Atomic creation in app-specific subdir + reparse point check | [Dalamud #1](https://github.com/puppyprogrammer/Dalamud/pull/1), [Launcher #1](https://github.com/puppyprogrammer/FFXIVQuickLauncher/pull/1) |
+| 4 | No IPC access control between plugins | Dalamud | `SetAllowedCallers()` opt-in allowlist on CallGate channels | [Dalamud #1](https://github.com/puppyprogrammer/Dalamud/pull/1) |
+
+All fixes are build-verified and backwards-compatible with upstream plugins.
+
+---
+
+## 4. Launcher customizations (FFXIVQuickLauncher `ai-friendly` branch)
+
+13 commits on top of upstream `master`:
+
+1. **Phase 4:** Repoint all `kamori.goats.dev` URLs → `ffxivplugins.commslink.net`
+2. **Phase 4 hotfixes:** Bypass Velopack update check, hardcode WINDOWS define
+3. **Phase 6:** upstream-sync + smoke-test + lkg-tag workflows
+4. **Rebrand:** XIVLauncher → FFXIVPlugins (exe name, window title, AppData path, shortcuts)
+5. **Polish:** Remove unsupported warning, update About credits, Discord/FAQ/repo URLs
+6. **Build:** Single-file publish, strip PDBs
+7. **Theme:** CommsLink color palette via MaterialDesign overrides
+8. **Settings:** Simplified UI — removed In-Game/Backup tabs, enlarged window
+9. **Security:** Temp file hardening (fix #3)
+
+---
+
+## 5. Risk register
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Goatcorp ships a Dalamud build that hard-codes their `kamori.goats.dev` URL into a signed binary and refuses to load if the URL is changed | low–med | We ship our **own** Dalamud build (Phase 3). Our launcher only ever pulls Dalamud from our CDN. |
-| Game patches break Dalamud sigs faster than we can keep up | **high** | Keep an auto-merge bot pulling upstream `Dalamud` + `FFXIVClientStructs` commits. Phase 6. |
-| Goatcorp changes the Kamori response schema (`PluginMaster` JSON) | low | We control both server and client in our fork. Schema drift only matters if we try to stay wire-compatible with goatcorp, which we don't. |
-| SE legal action / detection | low (no change from today) | Same risk surface as goatcorp; nothing we do increases it. |
-| Loss of `FFXIVClientStructs` upstream cooperation | med | Vendor it; auto-merge upstream while it lasts; budget for taking it over if forced. |
-| Plugin authors don't trust a fork and won't dual-list | med | Make the manifest format **byte-compatible** with goatcorp's so dual-listing is a one-line PR. |
+| Goatcorp hard-codes signed URL check in Dalamud | low–med | We ship our own Dalamud build. Our launcher only pulls from our CDN. |
+| Game patches break Dalamud sigs | **high** | upstream-sync workflow pulls `Dalamud` + `FFXIVClientStructs` commits daily. |
+| Goatcorp changes Kamori response schema | low | We control both server and client. Schema drift only matters if we stay wire-compatible, which we don't need to. |
+| SE legal action / detection | low | Same risk surface as goatcorp. Nothing we do increases it. |
+| Loss of FFXIVClientStructs upstream | med | Vendor it; auto-merge while it lasts; budget for taking over if forced. |
+| Plugin authors won't dual-list | med | Manifest format is byte-compatible with goatcorp's. Dual-listing is a one-line PR. |
 
 ---
 
-## 5. Phase 0 deliverables — DONE ✅
+## 6. What's next
 
-- [x] Cloned 10 critical repos
-- [x] Mapped every `kamori.goats.dev` endpoint to a file:line in the client
-- [x] Identified `XLWebServices/Controllers/PluginController.cs:94` as the chokepoint
-- [x] Confirmed `goatcorp.github.io/*` endpoints are pure static (mirrorable)
-- [x] Built dependency graph + risk register
-
----
-
-## 6. Recommended Phase 1 (next, awaiting your approval)
-
-**Goal of Phase 1:** stand up our own static CDN clones, **without changing
-any client code yet.** Verifiable end-to-end by you, with zero risk to your
-existing FFXIV install.
-
-Concrete steps:
-
-1. Create empty repos under `puppyprogrammer/`:
-   - `dalamud-distrib` — fork of goatcorp's
-   - `DalamudAssets` — fork
-   - `PluginDistD17` — fork (or new, since this is huge)
-   - `integrity` — fork (game integrity hashes from `goatcorp.github.io/integrity/`)
-2. Enable GitHub Pages on each. Verify the URLs respond:
-   - `https://puppyprogrammer.github.io/dalamud-distrib/stg/latest.zip`
-   - `https://puppyprogrammer.github.io/DalamudAssets/...`
-   - etc.
-3. Write a sync workflow that pulls upstream goatcorp updates daily so our
-   mirrors stay fresh until we diverge.
-
-**Test gate before Phase 2:** you visit each Pages URL in a browser and
-confirm a 200 response with the expected content. Nothing on your machine
-changes. If something is wrong we fix it before touching the launcher.
-
----
-
-## 7. Recommended Phase 2 preview (after Phase 1 passes)
-
-Stand up our own **XLWebServices** instance on commslink.net with config
-pointing at our forks of `DalamudPluginsD17` and `PluginDistD17`. Verify
-`https://api.commslink.net/Plugin/PluginMaster` returns a valid plugin list.
-
-**Test gate before Phase 3:** `curl` returns valid JSON; we have not yet
-touched the launcher or Dalamud. Still zero risk to your install.
-
----
-
-## 8. What I need from you to proceed to Phase 1
-
-1. Confirm the org name is `puppyprogrammer` for all forks (or specify
-   another).
-2. Confirm I should fork into sibling repos under `puppyprogrammer/*`
-   (not into `puppyprogrammer/FFXIVPlugins`).
-3. Create a GitHub personal access token with `repo` + `workflow` scope and
-   tell me how you want to provide it (env var, file, or you run the `gh`
-   commands yourself — I can prepare the exact commands).
-4. Confirm `commslink.net` DNS is yours and you can add a subdomain
-   (`api.commslink.net` or similar) when we get to Phase 2.
-
-Once you give me those, I'll execute Phase 1 and stop at the test gate so
-you can verify before we go further.
+- [ ] Merge security PRs to default branches
+- [ ] Rebuild Dalamud binary with security fixes and publish as new release
+- [ ] Set up upstream-sync GitHub Actions (daily auto-PR from goatcorp, human review before merge)
+- [ ] Plugin signing (Ed25519 — provider signs approved plugins, Dalamud verifies before load)
+- [ ] AI plugin submission flow (PR-based, AI review + human approval)
+- [ ] Linux launcher rebrand (XIVLauncher.Core)
