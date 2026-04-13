@@ -47,6 +47,7 @@ the code that ships to every XIVLauncher user today.
 | # | Vulnerability | Upstream status | Our fix | PR |
 |---|---|---|---|---|
 | 1 | **No plugin download integrity verification.** Dalamud downloads plugin ZIPs and loads them with zero hash checking. A compromised CDN or MITM can serve arbitrary code that executes inside the game process. | Unfixed | SHA-256 hash field in plugin manifest; downloaded ZIPs verified before extraction. Mismatch = install aborted. Backwards-compatible (plugins without hashes still install with a warning). | [Dalamud #1](https://github.com/puppyprogrammer/Dalamud/pull/1) |
+| 2 | **API server accepts plaintext HTTP.** `UseHttpsRedirection()` is commented out in the API server source. No HSTS, no `X-Content-Type-Options`, no `X-Frame-Options`, no security headers at all. Enables HTTP downgrade attacks — which, combined with #1, allows serving malicious plugins over plaintext. | Unfixed | HTTPS enforced, HSTS enabled (1 year), full security header suite added. | [XLWebServices #1](https://github.com/puppyprogrammer/XLWebServices/pull/1) |
 
 More fixes in progress. See the [security audit backlog](https://github.com/puppyprogrammer/FFXIVPlugins/issues)
 for the full list.
